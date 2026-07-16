@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Tracker 🛫</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 350px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            z-index: 10;
+        }
+
+        .header {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom: 3px solid #764ba2;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            background: #f0f0f0;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: #f0f0f0;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            color: #666;
+        }
+
+        .tab-btn.active {
+            background: white;
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-weight: 600;
+            font-size: 14px;
+            color: #333;
+        }
+
+        input, select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            padding: 10px 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .map-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #map, #map-tracker {
+            height: 100%;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .aircraft-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .aircraft-item {
+            padding: 12px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-left: 4px solid #667eea;
+        }
+
+        .aircraft-item:hover {
+            background: #f0f0f0;
+            border-left-color: #764ba2;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .aircraft-item.active {
+            background: #e8e8ff;
+            border-left-color: #764ba2;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .aircraft-item h3 {
+            font-size: 14px;
+            margin-bottom: 4px;
+            color: #333;
+        }
+
+        .aircraft-item p {
+            font-size: 12px;
+            color: #666;
+            margin: 2px 0;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 85%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.3s;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .close {
+            color: #666;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .modal h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .detail-item {
+            background: #f9f9f9;
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 3px solid #667eea;
+        }
+
+        .detail-item label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .detail-item .value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .status-badge.en-route {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .status-badge.landed {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+
+        .status-badge.unknown {
+            background: #f5f5f5;
+            color: #666;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .error-msg {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            border-left: 4px solid #c62828;
+        }
+
+        .info-msg {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            border-left: 4px solid #1565c0;
+        }
+
+        .map-main {
+            flex: 1;
+            display: flex;
+        }
+
+        .leaflet-control-attribution {
+            background: rgba(255, 255, 255, 0.8) !important;
+        }
+
+        .leaflet-popup-content {
+            font-size: 12px !important;
+            margin: 10px !important;
+        }
+
+        .aircraft-marker {
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            border: 2px solid white;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 50%;
+            }
+
+            #map, #map-tracker {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <div class="header">
+                <h1>✈️ Flight Tracker</h1>
+                <p style="font-size: 12px; opacity: 0.9;">Real-time aircraft tracking</p>
+            </div>
+
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('map-tab')">📍 Map</button>
+                <button class="tab-btn" onclick="switchTab('tracker-tab')">🎯 Tracker</button>
+            </div>
+
+            <div class="content">
+                <!-- MAP TAB -->
+                <div id="map-tab" class="tab-content active">
+                    <div class="input-group">
+                        <label>📍 Position Search</label>
+                        <button onclick="getUserLocation()">📍 Use My Location</button>
+                    </div>
+
+                    <div class="input-group">
+                        <label>City or Coordinates</label>
+                        <input type="text" id="locationInput" placeholder="e.g., Rome or 41.9028, 12.4964">
+                        <button onclick="searchLocation()">Search</button>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Search Radius (km)</label>
+                        <input type="number" id="radiusInput" value="50" min="5" max="500" step="5">
+                    </div>
+
+                    <button onclick="searchAircraft()">🔍 Search Aircraft</button>
+
+                    <div class="input-group">
+                        <label>Aircraft Found: <span id="aircraftCount">0</span></label>
+                    </div>
+
+                    <div class="aircraft-list" id="aircraftList"></div>
+                </div>
+
+                <!-- TRACKER TAB -->
+                <div id="tracker-tab" class="tab-content">
+                    <div class="input-group">
+                        <label>Flight Code</label>
+                        <input type="text" id="flightCodeInput" placeholder="e.g., BA123, AF456">
+                        <button onclick="searchFlight()">🔍 Search</button>
+                    </div>
+
+                    <div class="input-group">
+                        <label>OR Select from Map</label>
+                        <p style="font-size: 12px; color: #666; margin-top: -5px;">Click an aircraft on the map</p>
+                    </div>
+
+                    <div id="trackerDetails" style="display: none;">
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <label>Flight</label>
+                                <div class="value" id="trackerFlight">-</div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Aircraft</label>
+                                <div class="value" id="trackerAircraft">-</div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Status</label>
+                                <div class="value" id="trackerStatus">-</div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Altitude</label>
+                                <div class="value" id="trackerAltitude">-</div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Speed</label>
+                                <div class="value" id="trackerSpeed">-</div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Heading</label>
+                                <div class="value" id="trackerHeading">-</div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Departure</label>
+                                <div class="value" id="trackerDeparture">-</div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Arrival</label>
+                                <div class="value" id="trackerArrival">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAP CONTAINER -->
+        <div class="map-main" id="mapMain">
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <!-- AIRCRAFT DETAILS MODAL -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">Aircraft Details</h2>
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <label>Flight Code</label>
+                    <div class="value" id="modalFlightCode">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Aircraft Type</label>
+                    <div class="value" id="modalAircraftType">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Callsign</label>
+                    <div class="value" id="modalCallsign">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Registration</label>
+                    <div class="value" id="modalRegistration">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Altitude</label>
+                    <div class="value" id="modalAltitude">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Speed</label>
+                    <div class="value" id="modalSpeed">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Heading</label>
+                    <div class="value" id="modalHeading">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Vertical Rate</label>
+                    <div class="value" id="modalVRate">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Departure</label>
+                    <div class="value" id="modalDeparture">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Arrival</label>
+                    <div class="value" id="modalArrival">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Airline</label>
+                    <div class="value" id="modalAirline">-</div>
+                </div>
+                <div class="detail-item">
+                    <label>Status</label>
+                    <div class="value" id="modalStatus">-</div>
+                </div>
+            </div>
+            <button onclick="trackAircraft()" style="width: 100%; margin-top: 15px;">Track on Tracker Tab</button>
+        </div>
+    </div>
+
+    <script>
+        // API Configuration
+        const AIRLABS_KEY = '77560014-d636-4ffe-b593-d25e437057fc';
+        const API_KEYS = {
+            airlabs: '77560014-d636-4ffe-b593-d25e437057fc',
+        };
+
+        // Global state
+        let map, mapTracker;
+        let searchMarker, radiusCircle;
+        let selectedAircraft = null;
+        let aircraft = [];
+        let currentPosition = { lat: 41.9028, lng: 12.4964, radius: 50 }; // Rome default
+
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([currentPosition.lat, currentPosition.lng], 8);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+
+            map.on('click', onMapClick);
+        }
+
+        function initMapTracker() {
+            if (!mapTracker) {
+                mapTracker = L.map('map-tracker').setView([51.5, -0.09], 6);
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(mapTracker);
+            }
+        }
+
+        // Tab switching
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+
+            if (tabId === 'tracker-tab') {
+                setTimeout(() => initMapTracker(), 100);
+            }
+        }
+
+        // Geolocation
+        function getUserLocation() {
+            if (navigator.geolocation) {
+                document.querySelector('.loading') || showLoading('Locating...');
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        currentPosition.lat = position.coords.latitude;
+                        currentPosition.lng = position.coords.longitude;
+                        map.setView([currentPosition.lat, currentPosition.lng], 10);
+                        updateMapMarker();
+                        removeLoading();
+                    },
+                    error => {
+                        alert('Unable to get location: ' + error.message);
+                        removeLoading();
+                    }
+                );
+            } else {
+                alert('Geolocation not supported');
+            }
+        }
+
+        // Search location by city or coordinates
+        function searchLocation() {
+            const input = document.getElementById('locationInput').value.trim();
+            if (!input) return;
+
+            showLoading('Searching location...');
+
+            const [lat, lng] = input.includes(',') 
+                ? input.split(',').map(x => parseFloat(x.trim()))
+                : [null, null];
+
+            if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+                currentPosition.lat = lat;
+                currentPosition.lng = lng;
+                map.setView([lat, lng], 10);
+                updateMapMarker();
+                removeLoading();
+            } else {
+                // Use Nominatim geocoding
+                fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(input)}&format=json`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data && data.length > 0) {
+                            const { lat, lon } = data[0];
+                            currentPosition.lat = parseFloat(lat);
+                            currentPosition.lng = parseFloat(lon);
+                            map.setView([currentPosition.lat, currentPosition.lng], 10);
+                            updateMapMarker();
+                            removeLoading();
+                        } else {
+                            alert('Location not found');
+                            removeLoading();
+                        }
+                    });
+            }
+        }
+
+        function updateMapMarker() {
+            if (searchMarker) map.removeLayer(searchMarker);
+            if (radiusCircle) map.removeLayer(radiusCircle);
+
+            searchMarker = L.marker([currentPosition.lat, currentPosition.lng], {
+                icon: L.icon({
+                    iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI4IiBmaWxsPSIjNjY3ZWVhIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=',
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                })
+            }).addTo(map).bindPopup('Search center');
+
+            radiusCircle = L.circle([currentPosition.lat, currentPosition.lng], {
+                radius: currentPosition.radius * 1000,
+                color: '#667eea',
+                fillColor: '#667eea',
+                fillOpacity: 0.1,
+                weight: 2,
+                dashArray: '5, 5'
+            }).addTo(map);
+        }
+
+        function onMapClick(e) {
+            currentPosition.lat = e.latlng.lat;
+            currentPosition.lng = e.latlng.lng;
+            updateMapMarker();
+        }
+
+        // Search aircraft
+        async function searchAircraft() {
+            showLoading('Searching aircraft...');
+            aircraft = [];
+            
+            const lat = currentPosition.lat;
+            const lng = currentPosition.lng;
+            const radiusKm = parseFloat(document.getElementById('radiusInput').value);
+            const radiusDeg = radiusKm / 111;
+
+            const minLat = lat - radiusDeg;
+            const maxLat = lat + radiusDeg;
+            const minLng = lng - radiusDeg;
+            const maxLng = lng + radiusDeg;
+
+            try {
+                // Try AirLabs first
+                const response = await fetch(
+                    `https://airlabs.co/api/v9/flights?lat=${lat}&lng=${lng}&radius=${radiusKm}&api_key=${API_KEYS.airlabs}`
+                );
+                const data = await response.json();
+                if (data.response) {
+                    aircraft = data.response.map(a => ({
+                        source: 'airlabs',
+                        hex: a.hex,
+                        icao24: a.hex,
+                        flight: a.flight_iata || a.flight_icao,
+                        callsign: a.flight_icao,
+                        lat: a.lat,
+                        lng: a.lng,
+                        altitude: a.alt,
+                        speed: a.speed,
+                        heading: a.dir,
+                        vspeed: a.v_speed,
+                        aircraft: a.aircraft_icao,
+                        registration: a.reg_number,
+                        airline: a.airline_iata,
+                        departure: a.dep_iata,
+                        arrival: a.arr_iata,
+                        status: a.status,
+                        depTime: a.dep_time,
+                        arrTime: a.arr_time
+                    }));
+                }
+                
+                // Fallback to OpenSky
+                if (aircraft.length === 0) {
+                    const response = await fetch(
+                        `https://opensky-network.org/api/states/all?lamin=${minLat}&lamax=${maxLat}&lomin=${minLng}&lomax=${maxLng}`
+                    );
+                    const data = await response.json();
+                    if (data.states) {
+                        aircraft = data.states
+                            .filter(s => s[5] !== null && s[6] !== null)
+                            .map(s => ({
+                                source: 'opensky',
+                                hex: s[0],
+                                icao24: s[0],
+                                flight: (s[1] || '').trim() || 'N/A',
+                                callsign: (s[1] || '').trim(),
+                                lat: s[6],
+                                lng: s[5],
+                                altitude: s[7],
+                                speed: s[9],
+                                heading: s[10],
+                                vspeed: s[11],
+                                aircraft: 'Unknown',
+                                registration: 'N/A',
+                                airline: s[2],
+                                departure: 'N/A',
+                                arrival: 'N/A',
+                                status: s[8] ? 'landed' : 'en-route'
+                            }));
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching aircraft:', error);
+                alert('Error fetching aircraft data: ' + error.message);
+            }
+
+            removeLoading();
+            displayAircraft();
+            displayMapMarkers();
+        }
+
+        function displayAircraft() {
+            const list = document.getElementById('aircraftList');
+            document.getElementById('aircraftCount').textContent = aircraft.length;
+
+            list.innerHTML = aircraft.map((a, i) => `
+                <div class="aircraft-item" onclick="selectAircraft(${i})">
+                    <h3>✈️ ${a.flight || a.callsign || a.icao24}</h3>
+                    <p>📍 ${a.airline || 'Unknown'} | ${a.aircraft}</p>
+                    <p>🛫 ${a.departure} → 🛬 ${a.arrival}</p>
+                    <p>⬆️ ${a.altitude}m | ➡️ ${a.heading}° | 📊 ${a.speed}km/h</p>
+                </div>
+            `).join('');
+        }
+
+        function displayMapMarkers() {
+            // Clear existing markers
+            map.eachLayer(layer => {
+                if (layer instanceof L.Marker && layer !== searchMarker) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            aircraft.forEach((a, i) => {
+                const marker = L.marker([a.lat, a.lng], {
+                    icon: L.divIcon({
+                        className: 'aircraft-marker',
+                        html: `<span style="font-size: 16px;">✈️</span>`,
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
+                    })
+                }).addTo(map);
+
+                marker.bindPopup(`
+                    <strong>${a.flight || a.callsign}</strong><br>
+                    ${a.aircraft}<br>
+                    Alt: ${a.altitude}m | Speed: ${a.speed}km/h<br>
+                    <button onclick="selectAircraftFromMarker(${i})" style="width: 100%; margin-top: 5px;">View Details</button>
+                `, { maxWidth: 250 });
+            });
+        }
+
+        function selectAircraft(index) {
+            selectedAircraft = aircraft[index];
+            
+            document.querySelectorAll('.aircraft-item').forEach((el, i) => {
+                el.classList.toggle('active', i === index);
+            });
+
+            showAircraftModal();
+        }
+
+        function selectAircraftFromMarker(index) {
+            selectedAircraft = aircraft[index];
+            showAircraftModal();
+        }
+
+        function showAircraftModal() {
+            const a = selectedAircraft;
+            document.getElementById('modalFlightCode').textContent = a.flight || 'N/A';
+            document.getElementById('modalAircraftType').textContent = a.aircraft || 'Unknown';
+            document.getElementById('modalCallsign').textContent = a.callsign || 'N/A';
+            document.getElementById('modalRegistration').textContent = a.registration || 'N/A';
+            document.getElementById('modalAltitude').textContent = (a.altitude || 0) + ' m';
+            document.getElementById('modalSpeed').textContent = (a.speed || 0) + ' km/h';
+            document.getElementById('modalHeading').textContent = (a.heading || 0) + '°';
+            document.getElementById('modalVRate').textContent = (a.vspeed || 0) + ' m/s';
+            document.getElementById('modalDeparture').textContent = a.departure || 'N/A';
+            document.getElementById('modalArrival').textContent = a.arrival || 'N/A';
+            document.getElementById('modalAirline').textContent = a.airline || 'Unknown';
+            document.getElementById('modalStatus').innerHTML = `<span class="status-badge ${a.status || 'unknown'}">${a.status || 'Unknown'}</span>`;
+            document.getElementById('modalTitle').textContent = `${a.flight || 'Aircraft'} Details`;
+
+            document.getElementById('detailModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').style.display = 'none';
+        }
+
+        function trackAircraft() {
+            if (!selectedAircraft) return;
+
+            document.querySelectorAll('.tab-btn')[1].click();
+
+            const a = selectedAircraft;
+            document.getElementById('trackerFlight').textContent = a.flight || 'N/A';
+            document.getElementById('trackerAircraft').textContent = a.aircraft || 'Unknown';
+            document.getElementById('trackerStatus').innerHTML = `<span class="status-badge ${a.status || 'unknown'}">${a.status || 'Unknown'}</span>`;
+            document.getElementById('trackerAltitude').textContent = (a.altitude || 0) + ' m';
+            document.getElementById('trackerSpeed').textContent = (a.speed || 0) + ' km/h';
+            document.getElementById('trackerHeading').textContent = (a.heading || 0) + '°';
+            document.getElementById('trackerDeparture').textContent = a.departure || 'N/A';
+            document.getElementById('trackerArrival').textContent = a.arrival || 'N/A';
+
+            document.getElementById('trackerDetails').style.display = 'block';
+
+            setTimeout(() => {
+                mapTracker.setView([a.lat, a.lng], 7);
+                mapTracker.eachLayer(layer => {
+                    if (layer instanceof L.Marker) mapTracker.removeLayer(layer);
+                });
+
+                // Aircraft marker
+                L.marker([a.lat, a.lng], {
+                    icon: L.divIcon({
+                        className: 'aircraft-marker',
+                        html: `<span style="font-size: 16px; transform: rotate(${a.heading}deg);">✈️</span>`,
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
+                    })
+                }).addTo(mapTracker).bindPopup(a.flight || a.callsign);
+
+                // Departure
+                if (a.departure !== 'N/A') {
+                    L.marker([a.lat + Math.random() * 0.5 - 0.25, a.lng + Math.random() * 0.5 - 0.25], {
+                        icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIGZpbGw9IiMyZTdkMzIiIHJ4PSI0Ii8+PHRleHQgeD0iNiIgeT0iMTgiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSJ3aGl0ZSI+REVQPC90ZXh0Pjwvc3ZnPg==', iconSize: [24, 24], iconAnchor: [12, 12] })
+                    }).addTo(mapTracker).bindPopup('Departure: ' + a.departure);
+                }
+
+                // Arrival
+                if (a.arrival !== 'N/A') {
+                    L.marker([a.lat - Math.random() * 0.5 + 0.25, a.lng - Math.random() * 0.5 + 0.25], {
+                        icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIGZpbGw9IiM3YjFmYTIiIHJ4PSI0Ii8+PHRleHQgeD0iNCIgeT0iMTgiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSJ3aGl0ZSI+QVJSPC90ZXh0Pjwvc3ZnPg==', iconSize: [24, 24], iconAnchor: [12, 12] })
+                    }).addTo(mapTracker).bindPopup('Arrival: ' + a.arrival);
+                }
+            }, 200);
+
+            closeModal();
+        }
+
+        function searchFlight() {
+            const code = document.getElementById('flightCodeInput').value.trim().toUpperCase();
+            if (!code) return;
+
+            showLoading('Searching flight...');
+
+            const matching = aircraft.find(a => 
+                (a.flight && a.flight.includes(code)) || 
+                (a.callsign && a.callsign.includes(code))
+            );
+
+            if (matching) {
+                selectedAircraft = matching;
+                trackAircraft();
+                removeLoading();
+            } else {
+                removeLoading();
+                alert('Flight not found in current aircraft list. Search by location first.');
+            }
+        }
+
+        function showLoading(msg = 'Loading...') {
+            const list = document.getElementById('aircraftList');
+            list.innerHTML = `<div class="loading">${msg}</div>`;
+        }
+
+        function removeLoading() {
+            const list = document.getElementById('aircraftList');
+            if (list.querySelector('.loading')) {
+                list.innerHTML = '';
+            }
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('detailModal');
+            if (event.target === modal) modal.style.display = 'none';
+        }
+
+        // Initialize
+        initMap();
+    </script>
+</body>
+</html>
