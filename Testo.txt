@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AeroTrack Pro - Flight Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        /* Regole minime aggiuntive per gestire Leaflet z-index sui pannelli sovrapposti */
+        .leaflet-top, .leaflet-bottom { z-index: 500 !important; }
+        .custom-popup .leaflet-popup-content-wrapper { border-radius: 0.5rem; }
+        .custom-popup .leaflet-popup-content { margin: 12px; }
+    </style>
+</head>
+<body class="bg-slate-100 h-screen flex flex-col font-sans overflow-hidden">
+
+    <!-- Header Navigation -->
+    <nav class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between shadow-md z-[2000] relative shrink-0">
+        <div class="flex items-center gap-2">
+            <svg class="w-6 h-6 sm:w-8 sm:h-8 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+            </svg>
+            <span class="text-lg sm:text-xl font-bold tracking-wide">AeroTrack Pro</span>
+        </div>
+        <div class="flex bg-slate-800 rounded-lg p-1">
+            <button id="btn-mappa" onclick="switchTab('mappa')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium bg-blue-600 transition-colors">Radar Mappa</button>
+            <button id="btn-tracker" onclick="switchTab('tracker')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium hover:bg-slate-700 transition-colors">Live Tracker</button>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow relative h-full w-full">
+        
+        <!-- =================== TAB 1: RADAR MAPPA =================== -->
+        <div id="tab-mappa" class="w-full h-full absolute inset-0">
+            <!-- Overlay UI Mappa -->
+            <div class="absolute top-4 left-4 sm:left-4 right-4 sm:right-auto z-[1000] sm:w-80 max-h-[calc(100%-2rem)] overflow-y-auto bg-white/95 backdrop-blur shadow-2xl rounded-xl p-4 sm:p-5 border border-slate-200">
+                <h2 class="text-lg sm:text-xl font-bold text-slate-800 mb-4">Pannello Radar</h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-600 mb-1">Punto centrale</label>
+                        <button onclick="useCurrentLocation()" class="w-full flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 py-2 rounded-lg transition-colors mb-2 text-sm font-medium border border-blue-200">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.243-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            Usa la mia posizione
+                        </button>
+
+                        <div class="flex gap-2 mb-2">
+                            <input type="text" id="input-location" placeholder="Città o lat, lon" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <button onclick="searchLocation()" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-sm transition-colors">Cerca</button>
+                        </div>
+
+                        <button id="btn-pick-map" onclick="togglePickMode()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-300 shadow-sm">
+                            Scegli centro sulla mappa
+                        </button>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-600 mb-1">Raggio di ricerca (km)</label>
+                        <input type="number" id="input-radius" value="50" min="10" max="500" onchange="updateCircle()" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <button id="btn-search-planes" onclick="searchPlanes()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition-transform active:scale-95 flex justify-center items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        Trova Aerei nel Raggio
+                    </button>
+                </div>
+            </div>
+            <!-- Container Mappa -->
+            <div id="map-area" class="w-full h-full z-0"></div>
+        </div>
+
+        <!-- =================== TAB 2: LIVE TRACKER =================== -->
+        <div id="tab-tracker" class="w-full h-full absolute inset-0 hidden flex-col md:flex-row">
+            
+            <!-- Pannello Sinistro Dati -->
+            <div class="w-full md:w-80 lg:w-96 bg-white border-b md:border-r border-slate-200 shadow-xl flex flex-col h-1/2 md:h-full z-[1000] relative shrink-0">
+                <div class="p-4 sm:p-5 border-b border-slate-200 bg-slate-50">
+                    <h2 class="text-lg sm:text-xl font-bold text-slate-800 mb-2">Live Tracker</h2>
+                    <p class="text-xs text-slate-500 mb-3">Inserisci il codice ICAO o IATA (es. RYR123) oppure selezionalo dalla mappa radar.</p>
+                    <div class="flex gap-2">
+                        <input type="text" id="input-tracker-code" placeholder="Codice Volo" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase text-sm font-semibold">
+                        <button id="btn-track-flight" onclick="trackSpecificFlight()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow transition-colors whitespace-nowrap">Traccia</button>
+                    </div>
+                </div>
+                <!-- Container Risultati Dettagliati -->
+                <div id="tracker-results" class="p-4 sm:p-5 overflow-y-auto flex-grow bg-white">
+                    <div class="h-full flex flex-col items-center justify-center text-slate-400 mt-10">
+                        <svg class="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <p class="text-center text-sm">Nessun volo selezionato.<br>Cercalo o selezionalo dalla mappa.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Container Mappa Tracker -->
+            <div id="map-tracker" class="flex-grow h-1/2 md:h-full z-0"></div>
+        </div>
+    </main>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Application Logic -->
+    <script>
+        // API Keys (Hardcoded come richiesto)
+        const AIRLABS_API_KEY = '77560014-d636-4ffe-b593-d25e437057fc';
+
+        // Fix marker default mancanti per Leaflet su CDN
+        delete L.Icon.Default.prototype._getIconUrl;
+        L.Icon.Default.mergeOptions({
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        });
+
+        // Variabili Globali Map & State
+        let mapArea, mapTracker;
+        let trackerLayerGroup;
+        
+        let areaCenterMarker, areaCircle;
+        let areaPlanes = []; // Array per i marker degli aerei
+        
+        let currentLat = 41.9028; // Roma di default
+        let currentLon = 12.4964;
+        let isPickingMode = false;
+
+        // Inizializza l'interfaccia al caricamento
+        window.onload = function() {
+            initMaps();
+            updateCircle();
+        };
+
+        // --- SISTEMA DELLE MAPPE ---
+        function initMaps() {
+            // Mappa Radar (Tab 1)
+            mapArea = L.map('map-area', { zoomControl: false }).setView([currentLat, currentLon], 6);
+            L.control.zoom({ position: 'bottomright' }).addTo(mapArea);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap, &copy; CARTO'
+            }).addTo(mapArea);
+            mapArea.on('click', onMapAreaClick);
+            
+            // Imposta centro default
+            setAreaCenter(currentLat, currentLon, "Centro di Default");
+
+            // Mappa Tracker (Tab 2)
+            mapTracker = L.map('map-tracker', { zoomControl: false }).setView([currentLat, currentLon], 4);
+            L.control.zoom({ position: 'bottomright' }).addTo(mapTracker);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap, &copy; CARTO'
+            }).addTo(mapTracker);
+            trackerLayerGroup = L.layerGroup().addTo(mapTracker);
+        }
+
+        // --- TAB SWITCHER ---
+        function switchTab(tabId) {
+            document.getElementById('tab-mappa').classList.add('hidden');
+            document.getElementById('tab-tracker').classList.add('hidden');
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+
+            const btnMappa = document.getElementById('btn-mappa');
+            const btnTracker = document.getElementById('btn-tracker');
+
+            btnMappa.className = "px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors hover:bg-slate-700 bg-transparent text-white";
+            btnTracker.className = "px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors hover:bg-slate-700 bg-transparent text-white";
+
+            document.getElementById('btn-' + tabId).classList.replace('bg-transparent', 'bg-blue-600');
+            document.getElementById('btn-' + tabId).classList.remove('hover:bg-slate-700');
+
+            // Timeout per attendere che il CSS tolga 'hidden', vitale per Leaflet
+            setTimeout(() => {
+                if (tabId === 'mappa') mapArea.invalidateSize();
+                if (tabId === 'tracker') mapTracker.invalidateSize();
+            }, 50);
+        }
+
+        // --- FUNZIONALITÁ RADAR (TAB 1) ---
+        function togglePickMode() {
+            isPickingMode = !isPickingMode;
+            const btn = document.getElementById('btn-pick-map');
+            if (isPickingMode) {
+                btn.classList.add('bg-green-600', 'text-white', 'border-green-600');
+                btn.classList.remove('bg-slate-100', 'text-slate-800');
+                document.getElementById('map-area').style.cursor = 'crosshair';
+                btn.innerText = "Clicca un punto sulla mappa...";
+            } else {
+                btn.classList.remove('bg-green-600', 'text-white', 'border-green-600');
+                btn.classList.add('bg-slate-100', 'text-slate-800');
+                document.getElementById('map-area').style.cursor = '';
+                btn.innerText = "Scegli centro sulla mappa";
+            }
+        }
+
+        function onMapAreaClick(e) {
+            if (!isPickingMode) return;
+            setAreaCenter(e.latlng.lat, e.latlng.lng, "Centro selezionato");
+            togglePickMode(); // Disattiva la modalità dopo la selezione
+        }
+
+        function setAreaCenter(lat, lon, label = null) {
+            currentLat = lat;
+            currentLon = lon;
+            
+            if (areaCenterMarker) mapArea.removeLayer(areaCenterMarker);
+            areaCenterMarker = L.marker([lat, lon]).addTo(mapArea);
+            
+            if (label) {
+                areaCenterMarker.bindPopup(`<div class="font-bold text-slate-800">${label}</div>`).openPopup();
+            }
+            mapArea.setView([lat, lon], mapArea.getZoom());
+            updateCircle();
+        }
+
+        function updateCircle() {
+            const radiusKm = parseFloat(document.getElementById('input-radius').value) || 50;
+            if (areaCircle) mapArea.removeLayer(areaCircle);
+            
+            areaCircle = L.circle([currentLat, currentLon], {
+                radius: radiusKm * 1000, // Leaflet richiede metri
+                color: '#3b82f6',
+                weight: 2,
+                fillColor: '#93c5fd',
+                fillOpacity: 0.15
+            }).addTo(mapArea);
+            
+            // Fitta la vista alla fine dell'animazione
+            mapArea.fitBounds(areaCircle.getBounds(), { padding: [20, 20] });
+        }
+
+        // API Geolocation Browser
+        function useCurrentLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    pos => setAreaCenter(pos.coords.latitude, pos.coords.longitude, "La tua posizione attuale"),
+                    err => alert("Geolocalizzazione fallita o negata. Errore: " + err.message)
+                );
+            } else {
+                alert("Geolocalizzazione non supportata dal tuo browser.");
+            }
+        }
+
+        // API Nominatim (Cerca Città)
+        async function searchLocation() {
+            const query = document.getElementById('input-location').value.trim();
+            if (!query) return;
+
+            // Controlla se l'input sono direttamente coordinate (es. 41.9, 12.4)
+            const coordMatch = query.match(/^(-?\d+(\.\d+)?)[,\s]+(-?\d+(\.\d+)?)$/);
+            if (coordMatch) {
+                setAreaCenter(parseFloat(coordMatch[1]), parseFloat(coordMatch[3]), "Coordinate Manuali");
+                return;
+            }
+
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    setAreaCenter(parseFloat(data[0].lat), parseFloat(data[0].lon), data[0].display_name);
+                } else {
+                    alert("Città o indirizzo non trovato.");
+                }
+            } catch (e) {
+                alert("Errore nella comunicazione con il server di geocoding Nominatim.");
+            }
+        }
+
+        // API OpenSky (Cerca Voli Bounding Box)
+        async function searchPlanes() {
+            const radiusKm = parseFloat(document.getElementById('input-radius').value) || 50;
+            // Calcolo approssimativo del Bounding Box. (1 grado lat = ~111.32km)
+            const latDelta = radiusKm / 111.32;
+            const lonDelta = radiusKm / (111.32 * Math.cos(currentLat * Math.PI / 180));
+
+            const lamin = currentLat - latDelta;
+            const lamax = currentLat + latDelta;
+            const lomin = currentLon - lonDelta;
+            const lomax = currentLon + lonDelta;
+
+            const btn = document.getElementById('btn-search-planes');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-3 text-white" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Ricerca in corso...`;
+            btn.disabled = true;
+
+            try {
+                const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error("Limite API raggiunto o servizio momentaneamente non disponibile.");
+                const data = await res.json();
+
+                // Rimuovi aerei vecchi dalla mappa
+                areaPlanes.forEach(p => mapArea.removeLayer(p));
+                areaPlanes = [];
+
+                if (data.states && data.states.length > 0) {
+                    data.states.forEach(state => {
+                        const icao = state[0];
+                        const callsign = (state[1] || '').trim();
+                        const lon = state[5];
+                        const lat = state[6];
+                        const alt = state[7]; // baro_altitude
+                        const velocity = state[9]; // in m/s
+                        const trueTrack = state[10] || 0; // heading
+
+                        if (lat !== null && lon !== null) {
+                            const marker = L.marker([lat, lon], {
+                                icon: getPlaneIcon(trueTrack, '#1e40af') // Blu Scuro per Radar
+                            }).addTo(mapArea);
+
+                            // Pop-up HTML custom per l'aereo
+                            const displayCode = callsign || icao;
+                            const popupHtml = `
+                                <div class="w-44 font-sans custom-popup">
+                                    <div class="font-bold text-lg text-slate-800 border-b pb-1 mb-2">${displayCode}</div>
+                                    <div class="text-sm text-slate-600 mb-1"><b>Alt:</b> ${alt ? alt + ' m' : 'N/D'}</div>
+                                    <div class="text-sm text-slate-600 mb-1"><b>Vel:</b> ${velocity ? (velocity * 3.6).toFixed(0) + ' km/h' : 'N/D'}</div>
+                                    <div class="text-sm text-slate-600 mb-3"><b>Rotta:</b> ${Math.round(trueTrack)}°</div>
+                                    <button onclick="goToTracker('${displayCode}')" class="w-full bg-blue-600 text-white rounded-md py-1.5 text-sm font-semibold hover:bg-blue-700 transition">Apri nel Tracker</button>
+                                </div>
+                            `;
+                            marker.bindPopup(popupHtml);
+                            areaPlanes.push(marker);
+                        }
+                    });
+                    
+                    // Notifica non intrusiva
+                    const successToast = document.createElement('div');
+                    successToast.className = "absolute top-5 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-[2000] font-bold text-sm transition-opacity";
+                    successToast.innerText = `Trovati ${areaPlanes.length} aerei.`;
+                    document.getElementById('tab-mappa').appendChild(successToast);
+                    setTimeout(() => successToast.remove(), 3000);
+                    
+                } else {
+                    alert("Nessun aereo in volo trovato nell'area e raggio specificati in questo momento.");
+                }
+            } catch (e) {
+                alert("Errore OpenSky: " + e.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // Funzione per generare un'icona SVG ruotabile per l'aereo
+        function getPlaneIcon(rotation, color = '#1e3a8a') {
+            return L.divIcon({
+                html: `<div style="transform: rotate(${rotation}deg); width:32px; height:32px; display:flex; align-items:center; justify-content:center; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.4));">
+                         <svg viewBox="0 0 24 24" width="28" height="28">
+                           <!-- Material Design Plane Path -->
+                           <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="${color}" />
+                         </svg>
+                       </div>`,
+                className: 'custom-plane-icon',
+                iconSize: [32, 32],
+                iconAnchor: [16, 16],
+                popupAnchor: [0, -16]
+            });
+        }
+
+        // --- FUNZIONALITÁ TRACKER (TAB 2) ---
+        function goToTracker(code) {
+            switchTab('tracker');
+            document.getElementById('input-tracker-code').value = code;
+            trackSpecificFlight();
+        }
+
+        async function trackSpecificFlight() {
+            let code = document.getElementById('input-tracker-code').value.trim();
+            if (!code) return;
+
+            const btn = document.getElementById('btn-track-flight');
+            const originalText = btn.innerText;
+            btn.innerText = "...";
+            btn.disabled = true;
+            
+            const resultsDiv = document.getElementById('tracker-results');
+            resultsDiv.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-blue-600">
+                    <svg class="animate-spin h-10 w-10 mb-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <p class="font-semibold text-sm">Recupero dati in corso da Airlabs...</p>
+                </div>
+            `;
+
+            try {
+                // Tenta con parametro ICAO (OpenSky tipicamente restituisce ICAO callsigns)
+                let url = `https://airlabs.co/api/v9/flight?flight_icao=${code}&api_key=${AIRLABS_API_KEY}`;
+                let res = await fetch(url);
+                let data = await res.json();
+
+                // Se non trova, tenta con IATA (formato passeggeri standard)
+                if (data.error || !data.response) {
+                    url = `https://airlabs.co/api/v9/flight?flight_iata=${code}&api_key=${AIRLABS_API_KEY}`;
+                    res = await fetch(url);
+                    data = await res.json();
+                }
+
+                if (data.error || !data.response) {
+                    resultsDiv.innerHTML = `
+                        <div class="bg-red-50 text-red-600 p-4 rounded-lg border border-red-200">
+                            <h3 class="font-bold mb-1">Volo non trovato</h3>
+                            <p class="text-sm">Il codice inserito non corrisponde a un volo commerciale rintracciabile attualmente in aria (secondo i registri Airlabs). Riprova tra poco o verifica il codice.</p>
+                        </div>
+                    `;
+                    trackerLayerGroup.clearLayers();
+                    return;
+                }
+
+                const flightData = data.response;
+                displayTrackerData(flightData);
+                await updateTrackerMap(flightData);
+
+            } catch (e) {
+                resultsDiv.innerHTML = `<div class="text-red-500 p-4">Errore di rete. Riprovare.</div>`;
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // Mostra tutti i dati raw senza mockup
+        function displayTrackerData(f) {
+            const resultsDiv = document.getElementById('tracker-results');
+            
+            // Layout principale gradevole
+            let html = `
+                <div class="bg-gradient-to-br from-blue-50 to-white border border-blue-200 p-4 rounded-xl mb-6 shadow-sm">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h2 class="text-2xl font-black text-blue-900">${f.flight_iata || f.flight_icao || 'N/D'}</h2>
+                            <p class="text-sm font-semibold text-slate-500 uppercase tracking-widest">${f.airline_name || f.airline_icao || 'Compagnia N/D'}</p>
+                        </div>
+                        <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded shadow-sm border border-blue-200 uppercase">${f.status || 'N/D'}</span>
+                    </div>
+                    
+                    <div class="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
+                        <div class="text-center w-1/3">
+                            <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">Partenza</p>
+                            <p class="font-black text-2xl text-slate-800">${f.dep_iata || '---'}</p>
+                        </div>
+                        <div class="text-center w-1/3 text-blue-300 px-2 flex flex-col items-center">
+                            <p class="text-[10px] text-slate-500 font-bold mb-1">AEROMOBILE</p>
+                            <svg class="w-6 h-6 mb-1 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+                            <p class="text-xs font-semibold text-slate-600">${f.aircraft_icao || f.reg_number || 'N/D'}</p>
+                        </div>
+                        <div class="text-center w-1/3">
+                            <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">Arrivo</p>
+                            <p class="font-black text-2xl text-slate-800">${f.arr_iata || '---'}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Elenco completo di TUTTI i parametri restanti in formato lista
+            html += `
+                <h3 class="font-bold text-sm text-slate-800 mb-2 uppercase tracking-wider pl-1">Dati Grezzi (Tutti)</h3>
+                <div class="bg-slate-50 p-1 rounded-lg border border-slate-200 overflow-hidden shadow-inner text-sm">
+            `;
+            
+            for (const [key, value] of Object.entries(f)) {
+                // Non mostriamo valori null o stringhe vuote per pulizia visiva, 
+                // ma in ogni caso i dati reali di Airlabs vengono messi a crudo qui.
+                if (value !== null && value !== '') {
+                    html += `
+                        <div class="flex border-b border-slate-200 last:border-0 hover:bg-white transition-colors">
+                            <span class="font-semibold text-slate-600 w-[40%] bg-slate-100 px-3 py-2 border-r border-slate-200 text-xs flex items-center">${key}</span>
+                            <span class="w-[60%] px-3 py-2 text-slate-800 break-words font-mono text-xs">${value}</span>
+                        </div>
+                    `;
+                }
+            }
+            html += `</div>`;
+            resultsDiv.innerHTML = html;
+        }
+
+        // Aiutante per tracciare rotte esatte usando sempre le API Airlabs senza mockup
+        async function getAirportCoords(iata) {
+            if (!iata) return null;
+            try {
+                const res = await fetch(`https://airlabs.co/api/v9/airports?iata_code=${iata}&api_key=${AIRLABS_API_KEY}`);
+                const data = await res.json();
+                if (data.response && data.response.length > 0) {
+                    return {
+                        lat: data.response[0].lat,
+                        lng: data.response[0].lng,
+                        name: data.response[0].name
+                    };
+                }
+            } catch(e) { console.error("Impossibile caricare l'aeroporto " + iata); }
+            return null;
+        }
+
+        function createDotIcon(color) {
+            return L.divIcon({
+                html: `<div style="width: 14px; height: 14px; background-color: ${color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 6px rgba(0,0,0,0.5);"></div>`,
+                className: '',
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
+            });
+        }
+
+        async function updateTrackerMap(f) {
+            trackerLayerGroup.clearLayers();
+
+            if (!f.lat || !f.lng) {
+                // Il volo esiste in database ma non trasmette coordinate GPS attuali.
+                const fallbackCoords = await getAirportCoords(f.dep_iata);
+                if (fallbackCoords) {
+                    mapTracker.setView([fallbackCoords.lat, fallbackCoords.lng], 5);
+                }
+                alert("Il volo è in tabellone ma non sta trasmettendo le coordinate GPS attuali (potrebbe essere a terra o fuori copertura).");
+                return;
+            }
+
+            // Inserisci l'aereo attuale (Rosso per distinzione dal Radar)
+            const planeMarker = L.marker([f.lat, f.lng], { 
+                icon: getPlaneIcon(f.dir || 0, '#ef4444') // Tailwind red-500
+            }).bindPopup(`
+                <div class="font-bold">${f.flight_iata || f.flight_icao}</div>
+                <div>Altitudine: ${f.alt} m</div>
+                <div>Velocità: ${f.speed} km/h</div>
+            `).addTo(trackerLayerGroup);
+
+            // Costruzione del percorso Logico (Partenza -> Aereo -> Destinazione)
+            const coordsArrayForPath = [];
+            
+            // Cerca la Partenza
+            let depCoords = f.dep_lat ? {lat: f.dep_lat, lng: f.dep_lng, name: f.dep_name} : null;
+            if (!depCoords && f.dep_iata) depCoords = await getAirportCoords(f.dep_iata); // Usa API per recuperare
+            
+            if (depCoords) {
+                coordsArrayForPath.push([depCoords.lat, depCoords.lng]);
+                L.marker([depCoords.lat, depCoords.lng], { icon: createDotIcon('#22c55e') }) // Verde Partenza
+                    .bindPopup(`<div class="font-bold text-green-700">Partenza</div><div class="text-sm">${depCoords.name || f.dep_iata}</div>`)
+                    .addTo(trackerLayerGroup);
+            }
+
+            // Inserisci l'aereo nel percorso
+            coordsArrayForPath.push([f.lat, f.lng]);
+
+            // Cerca la Destinazione
+            let arrCoords = f.arr_lat ? {lat: f.arr_lat, lng: f.arr_lng, name: f.arr_name} : null;
+            if (!arrCoords && f.arr_iata) arrCoords = await getAirportCoords(f.arr_iata); // Usa API per recuperare
+
+            if (arrCoords) {
+                coordsArrayForPath.push([arrCoords.lat, arrCoords.lng]);
+                L.marker([arrCoords.lat, arrCoords.lng], { icon: createDotIcon('#3b82f6') }) // Blu Arrivo
+                    .bindPopup(`<div class="font-bold text-blue-700">Destinazione</div><div class="text-sm">${arrCoords.name || f.arr_iata}</div>`)
+                    .addTo(trackerLayerGroup);
+            }
+
+            // Disegna rotta stimata e fai fit
+            if (coordsArrayForPath.length > 1) {
+                const polyline = L.polyline(coordsArrayForPath, {
+                    color: '#94a3b8', 
+                    weight: 3, 
+                    dashArray: '8, 8',
+                    opacity: 0.8
+                }).addTo(trackerLayerGroup);
+                
+                // Lasciamo un bel padding per la visione d'insieme su dispositivi piccoli e grandi
+                mapTracker.fitBounds(polyline.getBounds(), { padding: [50, 50], maxZoom: 6 });
+            } else {
+                mapTracker.setView([f.lat, f.lng], 6);
+            }
+            
+            planeMarker.openPopup();
+        }
+
+    </script>
+</body>
+</html>
+
